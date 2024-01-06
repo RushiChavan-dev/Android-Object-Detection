@@ -1,0 +1,150 @@
+package com.rushi.photostudio
+
+import android.annotation.SuppressLint
+import android.app.DatePickerDialog
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import android.widget.ArrayAdapter
+import android.widget.TextView
+import android.widget.Toast
+import androidx.fragment.app.Fragment
+import androidx.recyclerview.widget.GridLayoutManager
+import com.rushi.photostudio.databinding.FragmentGalleryBinding
+import com.rushi.photostudio.persistent.AppDatabase
+import com.rushi.photostudio.persistent.ImageFile
+import com.rushi.photostudio.util.GalleryListAdapter
+import com.rushi.photostudio.util.getDatePickerDialog
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
+import java.util.*
+import java.util.concurrent.Executors
+
+
+/**
+ * A simple [Fragment] subclass as the second destination in the navigation.
+ */
+class GalleryFragment : Fragment() {
+
+    private var _binding: FragmentGalleryBinding? = null
+
+    // This property is only valid between onCreateView and
+    // onDestroyView.
+    private val binding get() = _binding!!
+
+    private var galleryListAdapter: GalleryListAdapter? = null
+
+
+    override fun onCreateView(
+        inflater: LayoutInflater, container: ViewGroup?,
+        savedInstanceState: Bundle?,
+    ): View? {
+
+        _binding = FragmentGalleryBinding.inflate(inflater, container, false)
+
+        this.galleryListAdapter = GalleryListAdapter(requireContext(), mutableListOf<ImageFile>())
+        binding.recyclerView.layoutManager = GridLayoutManager(this.context, 2)
+        binding.recyclerView.adapter = this.galleryListAdapter
+        reloadList(null)
+
+        return binding.root
+    }
+
+    @SuppressLint("SetTextI18n", "SimpleDateFormat")
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+
+        val adapter: ArrayAdapter<*> = ArrayAdapter.createFromResource(this.requireContext(), R.array.gallery_search_modes, R.layout.spinner_item)
+        adapter.setDropDownViewResource(R.layout.spinner_dropdown_item);
+        binding.spinner.adapter = adapter
+
+        // vyhledavani
+        binding.buttonFind.setOnClickListener {
+            val date: LocalDate = LocalDate.parse(binding.timeSelector.text.toString(), DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+            var mode: DateSearch = DateSearch.BY_YEAR
+            when((binding.spinner.selectedView as TextView).text.toString()) {
+                "Year" -> mode = DateSearch.BY_YEAR
+                "Month" -> mode = DateSearch.BY_MONTH
+                "Day" -> mode = DateSearch.BY_DAY
+            }
+            reloadList(date, mode)
+        }
+
+        // vyber datumu
+        val current = LocalDateTime.now()
+        binding.timeSelector.text = "${"%02d".format(current.year)}-${"%02d".format(current.monthValue)}-${"%02d".format(current.dayOfYear)}"
+        binding.timeSelector.setOnClickListener {
+            val calendar: Calendar = Calendar.getInstance()
+            val dpd: DatePickerDialog = getDatePickerDialog(this.context,
+                { view, year, month, day ->
+                    binding.timeSelector.text = "${"%02d".format(year)}-${"%02d".format(month + 1)}-${"%02d".format(day)}"
+                },
+                calendar.get(Calendar.YEAR),
+                calendar.get(Calendar.MONTH),
+                calendar.get(Calendar.DAY_OF_MONTH))
+            dpd.show()
+        }
+
+        // odstraneni vsech dat (mazani je aplikovane na vyber zaznamu)
+        binding.buttonDelete.setOnClickListener {
+            this.galleryListAdapter?.removeAll()
+            Executors.newSingleThreadExecutor().execute {
+                try {
+                    val db: AppDatabase = AppDatabase.getDatabase(requireContext())
+                    db.imageFileDao().deleteAll()
+                    db.filterPersistentDao().deleteAll()
+                    reloadList(null)
+                } catch (e: java.lang.Exception) {
+                    Handler(Looper.getMainLooper()).post(java.lang.Runnable {
+                        Toast.makeText(requireContext(), "Failed to delete images", Toast.LENGTH_SHORT).show()
+                    })
+                    e.printStackTrace()
+                }
+            }
+        }
+    }
+
+    override fun onDestroyView() {
+        super.onDestroyView()
+        _binding = null
+    }
+
+    enum class DateSearch {
+        BY_YEAR, BY_MONTH, BY_DAY
+    }
+
+    private fun reloadList(date: LocalDate?, search: DateSearch = DateSearch.BY_YEAR) {
+        this.galleryListAdapter?.removeAll()
+        Executors.newSingleThreadExecutor().execute {
+            try {
+                val db: AppDatabase = AppDatabase.getDatabase(requireContext())
+                var list: List<ImageFile>? = null
+                if(date == null) {
+                    list = db.imageFileDao().getAll()
+                } else {
+                    when(search) {
+                        DateSearch.BY_YEAR -> {
+                            list = db.imageFileDao().searchByYear(date.year)
+                        }
+                        DateSearch.BY_MONTH -> {
+                            list = db.imageFileDao().searchByMonth(date.year, date.monthValue)
+                        }
+                        DateSearch.BY_DAY -> {
+                            list = db.imageFileDao().searchByDay(date.year, date.monthValue, date.dayOfMonth)
+                        }
+                    }
+                }
+                Handler(Looper.getMainLooper()).post(java.lang.Runnable {
+                    this.galleryListAdapter?.insertAll(list)
+                })
+            } catch (e: java.lang.Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+}
