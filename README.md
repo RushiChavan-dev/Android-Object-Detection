@@ -7,7 +7,10 @@
   <img alt="GitHub repo size" src="https://img.shields.io/github/repo-size/0xMartin/PhotoStudio">
 </div>
 
-![TensorFlow]!(https://github.com/RushiChavan-dev/Android-Object-Detection/assets/50754786/3f1c80a6-a1e6-48ea-9bc9-66ff223cb8af)
+![TensorFlow]
+
+![image](https://github.com/RushiChavan-dev/Android-Object-Detection/assets/50754786/5b08db76-6763-4b6d-b835-9e76ca353b7d)
+
 
   
 # About
